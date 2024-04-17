@@ -138,6 +138,56 @@ public:
 template <typename T>
 const bool has_evolve<T>::value;
 
+/// Detect \p set_adaptive_matrix() method.
+/**
+ * This type trait will be \p true if \p T provides a method with
+ * the following signature:
+ * @code{.unparsed}
+ * void set_adaptive_matrix(vector_double &);
+ * @endcode
+ * The \p set_adaptive_matrix() method is part of the interface for the definition of an algorithm
+ * (see pagmo::algorithm).
+ */
+template <typename T>
+class has_set_adaptive_matrix
+{
+    template <typename U>
+    using set_adaptive_matrix_t = decltype(std::declval<U &>().set_adaptive_matrix(std::declval<vector_double &>()));
+    static const bool implementation_defined = std::is_same<void, detected_t<set_adaptive_matrix_t, T>>::value;
+
+public:
+    /// Value of the type trait.
+    static const bool value = implementation_defined;
+};
+
+template <typename T>
+const bool has_set_adaptive_matrix<T>::value;
+
+/// Detect \p has_set_adaptive_matrix() method.
+/**
+ * This type trait will be \p true if \p T provides a method with
+ * the following signature:
+ * @code{.unparsed}
+ * bool has_set_adaptive_matrix() const;
+ * @endcode
+ * The \p has_set_adaptive_matrix() method is part of the interface for the definition of an algorithm
+ * (see pagmo::algorithm).
+ */
+template <typename T>
+class override_has_set_adaptive_matrix
+{
+    template <typename U>
+    using has_set_adaptive_matrix_t = decltype(std::declval<const U &>().has_set_adaptive_matrix());
+    static const bool implementation_defined = std::is_same<bool, detected_t<has_set_adaptive_matrix_t, T>>::value;
+
+public:
+    /// Value of the type trait.
+    static const bool value = implementation_defined;
+};
+
+template <typename T>
+const bool override_has_set_adaptive_matrix<T>::value;
+
 namespace detail
 {
 
@@ -185,6 +235,8 @@ struct PAGMO_DLL_PUBLIC_INLINE_CLASS algo_inner_base {
     virtual bool has_set_seed() const = 0;
     virtual void set_verbosity(unsigned) = 0;
     virtual bool has_set_verbosity() const = 0;
+    virtual void set_adaptive_matrix(vector_double &) = 0;
+    virtual bool has_set_adaptive_matrix() const = 0;
     virtual std::string get_name() const = 0;
     virtual std::string get_extra_info() const = 0;
     virtual thread_safety get_thread_safety() const = 0;
@@ -237,6 +289,14 @@ struct PAGMO_DLL_PUBLIC_INLINE_CLASS algo_inner final : algo_inner_base {
     bool has_set_verbosity() const final
     {
         return has_set_verbosity_impl(m_value);
+    }
+    void set_adaptive_matrix(vector_double &matrix) final
+    {
+        set_adaptive_matrix_impl(m_value, matrix);
+    }
+    bool has_set_adaptive_matrix() const final
+    {
+        return has_set_adaptive_matrix_impl(m_value);
     }
     std::string get_name() const final
     {
@@ -308,6 +368,36 @@ struct PAGMO_DLL_PUBLIC_INLINE_CLASS algo_inner final : algo_inner_base {
     }
     template <typename U, enable_if_t<!pagmo::has_set_verbosity<U>::value, int> = 0>
     static bool has_set_verbosity_impl(const U &)
+    {
+        return false;
+    }
+    template <typename U, enable_if_t<pagmo::has_set_adaptive_matrix<U>::value, int> = 0>
+    static void set_adaptive_matrix_impl(U &value, vector_double &matrix)
+    {
+        value.set_adaptive_matrix(matrix);
+    }
+    template <typename U, enable_if_t<!pagmo::has_set_adaptive_matrix<U>::value, int> = 0>
+    static void set_adaptive_matrix_impl(U &, vector_double &)
+    {
+        pagmo_throw(not_implemented_error,
+                    "The set_adaptive_matrix() method has been invoked but it is not implemented in the UDA");
+    }
+    template <typename U,
+              enable_if_t<detail::conjunction<pagmo::has_set_adaptive_matrix<U>, override_has_set_adaptive_matrix<U>>::value, int> = 0>
+    static bool has_set_adaptive_matrix_impl(const U &a)
+    {
+        return a.has_set_adaptive_matrix();
+    }
+    template <
+        typename U,
+        enable_if_t<detail::conjunction<pagmo::has_set_adaptive_matrix<U>, detail::negation<override_has_set_adaptive_matrix<U>>>::value,
+                    int> = 0>
+    static bool has_set_adaptive_matrix_impl(const U &)
+    {
+        return true;
+    }
+    template <typename U, enable_if_t<!pagmo::has_set_adaptive_matrix<U>::value, int> = 0>
+    static bool has_set_adaptive_matrix_impl(const U &)
     {
         return false;
     }
@@ -636,6 +726,28 @@ public:
         return m_has_set_verbosity;
     }
 
+    // Set the adaptive matrix.
+    void set_adaptive_matrix(vector_double&);
+
+    /// Check if a <tt>%set_adaptive_matrix()</tt> method is available in the UDA.
+    /**
+     * This method will return \p true if a <tt>%set_adaptive_matrix()</tt> method is available in the UDA, \p false
+     * otherwise.
+     *
+     * The availability of the a <tt>%set_adaptive_matrix()</tt> method is determined as follows:
+     * - if the UDA does not satisfy pagmo::has_set_adaptive_matrix, then this method will always return \p false;
+     * - if the UDA satisfies pagmo::has_set_adaptive_matrix but it does not satisfy pagmo::override_has_set_adaptive_matrix,
+     *   then this method will always return \p true;
+     * - if the UDA satisfies both pagmo::has_set_adaptive_matrix and pagmo::override_has_set_adaptive_matrix,
+     *   then this method will return the output of the <tt>%has_set_adaptive_matrix()</tt> method of the UDA.
+     *
+     * @return a flag signalling the availability of the <tt>%set_adaptive_matrix()</tt> method in the UDA.
+     */
+    bool has_set_adaptive_matrix() const
+    {
+        return m_has_set_adaptive_matrix;
+    }
+
     /// Algorithm's name.
     /**
      * If the UDA satisfies pagmo::has_name, then this method will return the output of its <tt>%get_name()</tt> method.
@@ -760,6 +872,7 @@ private:
     // the extra_info string cannot be here as it must reflect the changes from set_seed
     bool m_has_set_seed;
     bool m_has_set_verbosity;
+    bool m_has_set_adaptive_matrix;
     std::string m_name;
     thread_safety m_thread_safety;
 };

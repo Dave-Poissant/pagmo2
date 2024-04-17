@@ -60,6 +60,8 @@ void algorithm::generic_ctor_impl()
     m_has_set_seed = ptr()->has_set_seed();
     // We detect if set_verbosity is implemented in the algorithm
     m_has_set_verbosity = ptr()->has_set_verbosity();
+    // We detect if set_adaptive_matrix is implemented in the algorithm
+    m_has_set_adaptive_matrix = ptr()->has_set_adaptive_matrix();
     // We store at construction the value returned from the user implemented get_name
     m_name = ptr()->get_name();
     // Store the thread safety value.
@@ -78,7 +80,7 @@ void algorithm::generic_ctor_impl()
  */
 algorithm::algorithm(const algorithm &other)
     : m_ptr(other.m_ptr->clone()), m_has_set_seed(other.m_has_set_seed), m_has_set_verbosity(other.m_has_set_verbosity),
-      m_name(other.m_name), m_thread_safety(other.m_thread_safety)
+      m_has_set_adaptive_matrix(other.m_has_set_adaptive_matrix), m_name(other.m_name), m_thread_safety(other.m_thread_safety)
 {
 }
 
@@ -88,8 +90,8 @@ algorithm::algorithm(const algorithm &other)
  */
 algorithm::algorithm(algorithm &&other) noexcept
     : m_ptr(std::move(other.m_ptr)), m_has_set_seed(std::move(other.m_has_set_seed)),
-      m_has_set_verbosity(other.m_has_set_verbosity), m_name(std::move(other.m_name)),
-      m_thread_safety(std::move(other.m_thread_safety))
+      m_has_set_verbosity(other.m_has_set_verbosity), m_has_set_adaptive_matrix(other.m_has_set_adaptive_matrix),
+      m_name(std::move(other.m_name)), m_thread_safety(std::move(other.m_thread_safety))
 {
 }
 
@@ -105,6 +107,7 @@ algorithm &algorithm::operator=(algorithm &&other) noexcept
         m_ptr = std::move(other.m_ptr);
         m_has_set_seed = std::move(other.m_has_set_seed);
         m_has_set_verbosity = other.m_has_set_verbosity;
+        m_has_set_adaptive_matrix = other.m_has_set_adaptive_matrix;
         m_name = std::move(other.m_name);
         m_thread_safety = std::move(other.m_thread_safety);
     }
@@ -174,6 +177,23 @@ void algorithm::set_seed(unsigned seed)
 void algorithm::set_verbosity(unsigned level)
 {
     ptr()->set_verbosity(level);
+}
+
+/// Set the adaptive matrix.
+/**
+ * This method will set the adaptive matrix for the algorithm. If the UDA satisfies pagmo::has_set_adaptive_matrix,
+ * then its <tt>%set_adaptive_matrix()</tt> method will be invoked. Otherwise, an error will be raised.
+ *
+ * The exact meaning of the input parameter \p matrix is dependent on the UDA.
+ *
+ * @param matrix the adaptive matrix.
+ *
+ * @throws not_implemented_error if the UDA does not satisfy pagmo::has_set_adaptive_matrix.
+ * @throws unspecified any exception thrown by the <tt>%set_adaptive_matrix()</tt> method of the UDA.
+ */
+void algorithm::set_adaptive_matrix(vector_double &matrix)
+{
+    ptr()->set_adaptive_matrix(matrix);
 }
 
 /// Algorithm's extra info.

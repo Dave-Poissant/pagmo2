@@ -39,6 +39,10 @@ see https://www.gnu.org/licenses/. */
 #include <utility>
 #include <vector>
 
+// TODO: remove this
+#include <iostream>
+#include <fstream>
+
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/nsga2.hpp>
 #include <pagmo/exceptions.hpp>
@@ -57,8 +61,9 @@ see https://www.gnu.org/licenses/. */
 namespace pagmo
 {
 
-nsga2::nsga2(unsigned gen, double cr, double eta_c, double m, double eta_m, unsigned seed)
-    : m_gen(gen), m_cr(cr), m_eta_c(eta_c), m_m(m), m_eta_m(eta_m), m_e(seed), m_seed(seed), m_verbosity(0u)
+nsga2::nsga2(unsigned gen, double cr, double eta_c, double m, double eta_m, unsigned seed, show_pop_func_t* show_pop_func, double epsilon)
+    : m_gen(gen), m_cr(cr), m_eta_c(eta_c), m_m(m), m_eta_m(eta_m), m_e(seed), m_seed(seed), m_verbosity(0u), 
+      m_show_pop_func(show_pop_func), m_epsilon(epsilon), m_adaptive_matrix(vector_double(0))
 {
     if (cr >= 1. || cr < 0.) {
         pagmo_throw(std::invalid_argument, "The crossover probability must be in the [0,1[ range, while a value of "
@@ -113,10 +118,10 @@ population nsga2::evolve(population pop) const
         pagmo_throw(std::invalid_argument,
                     "The problem appears to be stochastic " + get_name() + " cannot deal with it");
     }
-    if (prob.get_nc() != 0u) {
+    /*if (prob.get_nc() != 0u) {
         pagmo_throw(std::invalid_argument, "Non linear constraints detected in " + prob.get_name() + " instance. "
                                                + get_name() + " cannot deal with them.");
-    }
+    }*/
     if (prob.get_nf() < 2u) {
         pagmo_throw(std::invalid_argument, "This is a multiobjective algorithm, while number of objectives detected in "
                                                + prob.get_name() + " is " + std::to_string(prob.get_nf()));
@@ -147,6 +152,16 @@ population nsga2::evolve(population pop) const
             }
         }
     }
+
+    // Check that adaptive_matrix is the same size as the amount of objectives in prob
+    // If not, fill it with 0s and warn the user
+    if (m_adaptive_matrix.size() != prob.get_nobj() + prob.get_nec() + prob.get_nic())
+    {
+        // Warn user that adaptive_matrix is not the same size as the amount of objectives in prob
+        // and show the user the size of the adaptive_matrix and the amount of objectives in prob
+        pagmo_throw(std::invalid_argument, "Adaptive_matrix is not the same size as the amount of objectives in prob. adaptive_matrix size: "
+            + std::to_string(m_adaptive_matrix.size()) + ", prob amount of objectives: " + std::to_string(prob.get_nobj()));
+    }
     // ---------------------------------------------------------------------------------------------------------
 
     // No throws, all valid: we clear the logs
@@ -159,6 +174,23 @@ population nsga2::evolve(population pop) const
 
     std::iota(shuffle1.begin(), shuffle1.end(), vector_double::size_type(0));
     std::iota(shuffle2.begin(), shuffle2.end(), vector_double::size_type(0));
+
+    // Initiate ofstream for logging in csv
+    std::ofstream log_file;
+    log_file.open("/home/davepoissant/dronevolt_ws/logs/optimization/nsga2_log.csv");
+    log_file << "Generation,";
+    log_file << "SolutionNumber,";
+    for (decltype(prob.get_nobj()) i = 0u; i < prob.get_nobj(); ++i)
+    {
+        if (i < prob.get_nobj() - 1)
+        {
+            log_file << "Objective" << i << ",";
+        }
+        else
+            log_file << "Objective" << i;
+    }
+    // End of header line
+    log_file << "\n";
 
     // Main NSGA-II loop
     for (decltype(m_gen) gen = 1u; gen <= m_gen; gen++) {
@@ -202,7 +234,7 @@ population nsga2::evolve(population pop) const
         std::shuffle(shuffle2.begin(), shuffle2.end(), m_e);
 
         // 1 - We compute crowding distance and non dominated rank for the current population
-        auto fnds_res = fast_non_dominated_sorting(pop.get_f());
+        auto fnds_res = adaptive_fast_non_dominated_sorting(pop.get_f(), m_epsilon, m_adaptive_matrix);
         auto ndf = std::get<0>(fnds_res); // non dominated fronts [[0,3,2],[1,5,6],[4],...]
         vector_double pop_cd(NP);         // crowding distances of the whole population
         auto ndr = std::get<3>(fnds_res); // non domination rank [0,1,0,0,2,1,1, ... ]
@@ -298,6 +330,35 @@ population nsga2::evolve(population pop) const
                 // that its feval counter is correctly updated
                 auto f1 = prob.fitness(children.first);
                 auto f2 = prob.fitness(children.second);
+
+                // Log the solutions
+                log_file << gen << ",";
+                log_file << i << ",";
+                for (decltype(f1.size()) j = 0u; j < f1.size(); ++j)
+                {
+                    if (j < f1.size() - 1)
+                    {
+                        log_file << f1[j] << ",";
+                    }
+                    else
+                        log_file << f1[j];
+                }
+                log_file << "\n";
+
+                log_file << gen << ",";
+                log_file << i + 1 << ",";
+                for (decltype(f2.size()) j = 0u; j < f2.size(); ++j)
+                {
+                    if (j < f2.size() - 1)
+                    {
+                        log_file << f2[j] << ",";
+                    }
+                    else
+                        log_file << f2[j];
+                }
+                log_file << "\n";
+
+
                 popnew.push_back(children.first, f1);
                 popnew.push_back(children.second, f2);
 
@@ -312,6 +373,34 @@ population nsga2::evolve(population pop) const
                 // that its feval counter is correctly updated
                 f1 = prob.fitness(children.first);
                 f2 = prob.fitness(children.second);
+
+                // Log the solutions
+                log_file << gen << ",";
+                log_file << i + 2 << ",";
+                for (decltype(f1.size()) j = 0u; j < f1.size(); ++j)
+                {
+                    if (j < f1.size() - 1)
+                    {
+                        log_file << f1[j] << ",";
+                    }
+                    else
+                        log_file << f1[j];
+                }
+                log_file << "\n";
+
+                log_file << gen << ",";
+                log_file << i + 3 << ",";
+                for (decltype(f2.size()) j = 0u; j < f2.size(); ++j)
+                {
+                    if (j < f2.size() - 1)
+                    {
+                        log_file << f2[j] << ",";
+                    }
+                    else
+                        log_file << f2[j];
+                }
+                log_file << "\n";
+                
                 popnew.push_back(children.first, f1);
                 popnew.push_back(children.second, f2);
             } // popnew now contains 2NP individuals
@@ -323,7 +412,14 @@ population nsga2::evolve(population pop) const
         for (population::size_type i = 0; i < NP; ++i) {
             pop.set_xf(i, popnew.get_x()[best_idx[i]], popnew.get_f()[best_idx[i]]);
         }
+
+        if (m_show_pop_func)
+            (*m_show_pop_func)(pop);
     } // end of main NSGAII loop
+
+    // Close the log file
+    log_file.close();
+
     return pop;
 }
 
@@ -344,6 +440,15 @@ void nsga2::set_seed(unsigned seed)
 void nsga2::set_bfe(const bfe &b)
 {
     m_bfe = b;
+}
+
+/// Sets the adaptive matrix
+/**
+ * @param m adaptive matrix
+ */
+void nsga2::set_adaptive_matrix(const vector_double &m)
+{
+    m_adaptive_matrix = m;
 }
 
 /// Extra info

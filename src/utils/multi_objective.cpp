@@ -112,6 +112,33 @@ bool pareto_dominance(const vector_double &obj1, const vector_double &obj2)
     return found_strictly_dominating_dimension;
 }
 
+bool adaptive_epsilon_dominance(const vector_double &obj1, const vector_double &obj2, const double epsilon, const vector_double &adaptive_matrix)
+{
+    if (obj1.size() != obj2.size()) {
+        pagmo_throw(std::invalid_argument,
+                    "Different number of objectives found in input fitnesses: " + std::to_string(obj1.size()) + " and "
+                        + std::to_string(obj2.size()) + ". I cannot define dominance");
+    }
+
+    if (adaptive_matrix.size() != obj1.size()) {
+        pagmo_throw(std::invalid_argument,
+                    "Different number of objectives found in input adaptive matrix: " + std::to_string(adaptive_matrix.size()) + " and "
+                        + std::to_string(obj1.size()) + ". I cannot define dominance");
+    }
+
+    bool found_strictly_dominating_dimension = false;
+    for (decltype(obj1.size()) i = 0u; i < obj1.size(); ++i) {
+        if (detail::greater_than_f(obj1[i], obj2[i] + epsilon * adaptive_matrix[i])) {
+            return false;
+        } else if (detail::less_than_f(obj1[i], obj2[i])) {
+            found_strictly_dominating_dimension = true;
+        }
+    }
+    return found_strictly_dominating_dimension;
+}
+
+
+
 /// Non dominated front 2D (Kung's algorithm)
 /**
  * Finds the non dominated front of a set of two dimensional objectives. Complexity is O(N logN) and is thus lower than
@@ -231,6 +258,67 @@ fnds_return_type fast_non_dominated_sorting(const std::vector<vector_double> &po
             non_dom_fronts[0].push_back(i);
         }
     }
+    // we copy dom_count as we want to output its value at this point
+    auto dom_count_copy(dom_count);
+    auto current_front = non_dom_fronts[0];
+    std::vector<std::vector<pop_size_t>>::size_type front_counter(0u);
+    while (current_front.size() != 0u) {
+        std::vector<pop_size_t> next_front;
+        for (decltype(current_front.size()) p = 0u; p < current_front.size(); ++p) {
+            for (decltype(dom_list[current_front[p]].size()) q = 0u; q < dom_list[current_front[p]].size(); ++q) {
+                --dom_count_copy[dom_list[current_front[p]][q]];
+                if (dom_count_copy[dom_list[current_front[p]][q]] == 0u) {
+                    non_dom_rank[dom_list[current_front[p]][q]] = front_counter + 1u;
+                    next_front.push_back(dom_list[current_front[p]][q]);
+                }
+            }
+        }
+        ++front_counter;
+        current_front = next_front;
+        if (current_front.size() != 0u) {
+            non_dom_fronts.push_back(current_front);
+        }
+    }
+    return std::make_tuple(std::move(non_dom_fronts), std::move(dom_list), std::move(dom_count),
+                           std::move(non_dom_rank));
+}
+
+fnds_return_type adaptive_fast_non_dominated_sorting(const std::vector<vector_double> &points, const double epsilon, const vector_double &adaptive_matrix)
+{
+    auto N = points.size();
+    // We make sure to have two points at least (one could also be allowed)
+    if (N < 2u) {
+        pagmo_throw(std::invalid_argument, "At least two points are needed for adaptive fast_non_dominated_sorting: "
+                                               + std::to_string(N) + " detected.");
+    }
+    // Initialize the return values
+    std::vector<std::vector<pop_size_t>> non_dom_fronts(1u);
+    std::vector<std::vector<pop_size_t>> dom_list(N);
+    std::vector<pop_size_t> dom_count(N);
+    std::vector<pop_size_t> non_dom_rank(N);
+
+    // Start the adaptive fast non dominated sort algorithm
+    for (decltype(N) i = 0u; i < N; ++i) {
+        dom_list[i].clear();
+        dom_count[i] = 0u;
+        for (decltype(N) j = 0u; j < i; ++j) {
+            if (adaptive_epsilon_dominance(points[i], points[j], epsilon, adaptive_matrix)) {
+                dom_list[i].push_back(j);
+                ++dom_count[j];
+            } else if (adaptive_epsilon_dominance(points[j], points[i], epsilon, adaptive_matrix)) {
+                dom_list[j].push_back(i);
+                ++dom_count[i];
+            }
+        }
+    }
+
+    for (decltype(N) i = 0u; i < N; ++i) {
+        if (dom_count[i] == 0u) {
+            non_dom_rank[i] = 0u;
+            non_dom_fronts[0].push_back(i);
+        }
+    }
+
     // we copy dom_count as we want to output its value at this point
     auto dom_count_copy(dom_count);
     auto current_front = non_dom_fronts[0];

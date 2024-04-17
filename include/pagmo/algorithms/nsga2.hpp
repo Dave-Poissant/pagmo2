@@ -32,6 +32,7 @@ see https://www.gnu.org/licenses/. */
 #include <string>
 #include <tuple>
 #include <vector>
+#include <functional>
 
 #include <boost/optional.hpp>
 
@@ -44,6 +45,7 @@ see https://www.gnu.org/licenses/. */
 
 namespace pagmo
 {
+typedef std::function<void(const population &)> show_pop_func_t;
 /// Nondominated Sorting genetic algorithm II (NSGA-II)
 /**
  * \image html nsga2.jpg "The NSGA-II flowchart" width=3cm
@@ -82,7 +84,7 @@ public:
      * [1,100[ or \p eta_m is not in [1,100[.
      */
     nsga2(unsigned gen = 1u, double cr = 0.95, double eta_c = 10., double m = 0.01, double eta_m = 50.,
-          unsigned seed = pagmo::random_device::next());
+          unsigned seed = pagmo::random_device::next(), show_pop_func_t* show_pop_func = nullptr, double epsilon = 0.0);
 
     // Algorithm evolve method
     population evolve(population) const;
@@ -141,6 +143,9 @@ public:
     // Sets the bfe
     void set_bfe(const bfe &b);
 
+    // Sets the adaptive matrix
+    void set_adaptive_matrix(const vector_double &m);
+
     /// Algorithm name
     /**
      * Returns the name of the algorithm.
@@ -184,6 +189,9 @@ private:
     unsigned m_verbosity;
     mutable log_type m_log;
     boost::optional<bfe> m_bfe;
+    show_pop_func_t* m_show_pop_func;
+    double m_epsilon;
+    vector_double m_adaptive_matrix;
 };
 
 } // namespace pagmo

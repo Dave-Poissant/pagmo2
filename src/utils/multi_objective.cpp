@@ -396,6 +396,8 @@ vector_double crowding_distance(const std::vector<vector_double> &non_dom_front)
         retval[indexes[N - 1u]] = std::numeric_limits<double>::infinity();
         double df = non_dom_front[indexes[N - 1u]][i] - non_dom_front[indexes[0]][i];
         for (decltype(N - 2u) j = 1u; j < N - 1u; ++j) {
+            if (!df)
+                df = 1.e-10;
             retval[indexes[j]] += (non_dom_front[indexes[j + 1u]][i] - non_dom_front[indexes[j - 1u]][i]) / df;
         }
     }

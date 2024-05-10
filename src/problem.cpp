@@ -183,20 +183,22 @@ void problem::generic_ctor_impl()
     if (m_nic > std::numeric_limits<vector_double::size_type>::max() / 3u) {
         pagmo_throw(std::invalid_argument, "The number of inequality constraints is too large");
     }
-    // 4 - Presence of batch_fitness().
+    // 4 - Presence of fitness_non_const().
+    m_has_fitness_non_const = ptr()->has_fitness_non_const();
+    // 5 - Presence of batch_fitness().
     // NOTE: all these m_has_* attributes refer to the presence of the features in the UDP.
     m_has_batch_fitness = ptr()->has_batch_fitness();
-    // 5 - Presence of gradient and its sparsity.
+    // 6 - Presence of gradient and its sparsity.
     m_has_gradient = ptr()->has_gradient();
     m_has_gradient_sparsity = ptr()->has_gradient_sparsity();
-    // 6 - Presence of Hessians and their sparsity.
+    // 7 - Presence of Hessians and their sparsity.
     m_has_hessians = ptr()->has_hessians();
     m_has_hessians_sparsity = ptr()->has_hessians_sparsity();
-    // 7 - Is this a stochastic problem?
+    // 8 - Is this a stochastic problem?
     m_has_set_seed = ptr()->has_set_seed();
-    // 8 - Name.
+    // 9 - Name.
     m_name = ptr()->get_name();
-    // 9 - Check the sparsities, and cache their sizes.
+    // 10 - Check the sparsities, and cache their sizes.
     if (m_has_gradient_sparsity) {
         // If the problem provides gradient sparsity, get it, check it
         // and store its size.
@@ -233,9 +235,9 @@ void problem::generic_ctor_impl()
         m_hs_dim.resize(boost::numeric_cast<decltype(m_hs_dim.size())>(nf));
         std::fill(m_hs_dim.begin(), m_hs_dim.end(), nx * (nx - 1u) / 2u + nx); // lower triangular
     }
-    // 10 - Constraint tolerance
+    // 11 - Constraint tolerance
     m_c_tol.resize(m_nec + m_nic);
-    // 11 - Thread safety.
+    // 12 - Thread safety.
     m_thread_safety = ptr()->get_thread_safety();
 }
 
@@ -254,7 +256,7 @@ problem::problem(const problem &other)
       m_gevals(other.m_gevals.load(std::memory_order_relaxed)),
       m_hevals(other.m_hevals.load(std::memory_order_relaxed)), m_lb(other.m_lb), m_ub(other.m_ub),
       m_nobj(other.m_nobj), m_nec(other.m_nec), m_nic(other.m_nic), m_nix(other.m_nix), m_c_tol(other.m_c_tol),
-      m_has_batch_fitness(other.m_has_batch_fitness), m_has_gradient(other.m_has_gradient),
+      m_has_fitness_non_const(other.m_has_fitness_non_const), m_has_batch_fitness(other.m_has_batch_fitness), m_has_gradient(other.m_has_gradient),
       m_has_gradient_sparsity(other.m_has_gradient_sparsity), m_has_hessians(other.m_has_hessians),
       m_has_hessians_sparsity(other.m_has_hessians_sparsity), m_has_set_seed(other.m_has_set_seed),
       m_name(other.m_name), m_gs_dim(other.m_gs_dim), m_hs_dim(other.m_hs_dim), m_thread_safety(other.m_thread_safety)
@@ -270,8 +272,8 @@ problem::problem(problem &&other) noexcept
       m_gevals(other.m_gevals.load(std::memory_order_relaxed)),
       m_hevals(other.m_hevals.load(std::memory_order_relaxed)), m_lb(std::move(other.m_lb)),
       m_ub(std::move(other.m_ub)), m_nobj(other.m_nobj), m_nec(other.m_nec), m_nic(other.m_nic), m_nix(other.m_nix),
-      m_c_tol(std::move(other.m_c_tol)), m_has_batch_fitness(other.m_has_batch_fitness),
-      m_has_gradient(other.m_has_gradient), m_has_gradient_sparsity(other.m_has_gradient_sparsity),
+      m_c_tol(std::move(other.m_c_tol)), m_has_fitness_non_const(other.m_has_fitness_non_const), 
+      m_has_batch_fitness(other.m_has_batch_fitness), m_has_gradient(other.m_has_gradient), m_has_gradient_sparsity(other.m_has_gradient_sparsity),
       m_has_hessians(other.m_has_hessians), m_has_hessians_sparsity(other.m_has_hessians_sparsity),
       m_has_set_seed(other.m_has_set_seed), m_name(std::move(other.m_name)), m_gs_dim(other.m_gs_dim),
       m_hs_dim(other.m_hs_dim), m_thread_safety(std::move(other.m_thread_safety))
@@ -373,6 +375,23 @@ vector_double problem::fitness(const vector_double &dv) const
 
     // 4 - increments fitness evaluation counter
     // NOTE: this is an atomic variable, thread-safe.
+    increment_fevals(1);
+
+    return retval;
+}
+
+vector_double problem::fitness_non_const(vector_double &dv) const
+{
+    // 1 - checks the decision vector
+    detail::prob_check_dv(*this, dv.data(), dv.size());
+
+    // 2 - computes the fitness
+    vector_double retval(ptr()->fitness_non_const(dv));
+
+    // 3 - checks the fitness vector
+    detail::prob_check_fv(*this, retval.data(), retval.size());
+
+    // 4 - increments fitness evaluation counter
     increment_fevals(1);
 
     return retval;
@@ -802,6 +821,7 @@ std::ostream &operator<<(std::ostream &os, const problem &p)
     stream(os, p.get_bounds().first, '\n');
     os << "\tUpper bounds: ";
     stream(os, p.get_bounds().second, '\n');
+    stream(os, "\tHas fitness non const evaluation: ", p.has_fitness_non_const(), '\n');
     stream(os, "\tHas batch fitness evaluation: ", p.has_batch_fitness(), '\n');
     stream(os, "\n\tHas gradient: ", p.has_gradient(), '\n');
     stream(os, "\tUser implemented gradient sparsity: ", p.has_gradient_sparsity(), '\n');

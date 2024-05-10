@@ -99,6 +99,30 @@ public:
     static constexpr bool value = implementation_defined;
 };
 
+// Detect the fitness_non_const() argument member function.
+template <typename T>
+class has_fitness_non_const
+{
+    template <typename U>
+    using fitness_non_const_t = decltype(std::declval<const U &>().fitness_non_const(std::declval<vector_double &>()));
+    static const bool implementation_defined = std::is_same<detected_t<fitness_non_const_t, T>, vector_double>::value;
+
+public:
+    static constexpr bool value = implementation_defined;
+};
+
+// Detect the has_fitness_non_const() member function.
+template <typename T>
+class override_has_fitness_non_const
+{
+    template <typename U>
+    using has_fitness_non_const_t = decltype(std::declval<const U &>().has_fitness_non_const());
+    static const bool implementation_defined = std::is_same<bool, detected_t<has_fitness_non_const_t, T>>::value;
+
+public:
+    static constexpr bool value = implementation_defined;
+};
+
 /// Detect \p get_nobj() method.
 /**
  * This type trait will be \p true if \p T provides a method with
@@ -471,6 +495,8 @@ struct PAGMO_DLL_PUBLIC_INLINE_CLASS prob_inner_base {
     virtual ~prob_inner_base() {}
     virtual std::unique_ptr<prob_inner_base> clone() const = 0;
     virtual vector_double fitness(const vector_double &) const = 0;
+    virtual vector_double fitness_non_const(vector_double &) const = 0;
+    virtual bool has_fitness_non_const() const = 0;
     virtual vector_double batch_fitness(const vector_double &) const = 0;
     virtual bool has_batch_fitness() const = 0;
     virtual vector_double gradient(const vector_double &) const = 0;
@@ -529,6 +555,29 @@ struct PAGMO_DLL_PUBLIC_INLINE_CLASS prob_inner final : prob_inner_base {
         return m_value.get_bounds();
     }
     // optional methods
+    vector_double fitness_non_const([[maybe_unused]] vector_double &dv) const final
+    {
+        if constexpr (pagmo::has_fitness_non_const<T>::value) {
+            return m_value.fitness_non_const(dv);
+        } else {
+            pagmo_throw(not_implemented_error,
+                        "The fitness_non_const() method has been invoked, but it is not implemented in a "
+                        "UDP of type '"
+                            + get_name_impl(m_value) + "'");
+        }
+    }
+    bool has_fitness_non_const() const final
+    {
+        if constexpr (detail::conjunction<pagmo::has_fitness_non_const<T>, pagmo::override_has_fitness_non_const<T>>::value) {
+            return m_value.has_fitness_non_const();
+        } else {
+            // This covers the following cases:
+            // - has fitness non const, no override (returns true),
+            // - no fitness fitness non const, no override (returns false),
+            // - no fitness non const, override (returns false).
+            return pagmo::has_fitness_non_const<T>::value;
+        }
+    }
     vector_double batch_fitness([[maybe_unused]] const vector_double &dv) const final
     {
         if constexpr (pagmo::has_batch_fitness<T>::value) {
@@ -1159,6 +1208,12 @@ public:
     // Fitness.
     vector_double fitness(const vector_double &) const;
 
+    vector_double fitness_non_const(vector_double &) const;
+    bool has_fitness_non_const() const
+    {
+        return m_has_fitness_non_const;
+    }
+
 private:
 #if !defined(PAGMO_DOXYGEN_INVOKED)
     // Make friends with the batch_fitness() invocation helper.
@@ -1666,6 +1721,7 @@ private:
     vector_double::size_type m_nic;
     vector_double::size_type m_nix;
     vector_double m_c_tol;
+    bool m_has_fitness_non_const;
     bool m_has_batch_fitness;
     bool m_has_gradient;
     bool m_has_gradient_sparsity;

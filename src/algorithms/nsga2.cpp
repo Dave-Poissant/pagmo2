@@ -177,7 +177,7 @@ population nsga2::evolve(population pop) const
 
     // Initiate ofstream for logging in csv
     std::ofstream log_file;
-    log_file.open("/home/davepoissant/dronevolt_ws/logs/optimization/nsga2_log.csv");
+    log_file.open("/home/adesbiens34/dronevolt_ws/logs/optimization/nsga2_log.csv");
     log_file << "Generation,";
     log_file << "SolutionNumber,";
     for (decltype(prob.get_nobj()) i = 0u; i < prob.get_nobj(); ++i)
@@ -189,6 +189,12 @@ population nsga2::evolve(population pop) const
         else
             log_file << "Objective" << i;
     }
+    for (decltype(prob.get_nec()) i = 0u; i < prob.get_nec(); ++i)
+        log_file << ",EqualityConstraint" << i;
+
+    for (decltype(prob.get_nic()) i = 0u; i < prob.get_nic(); ++i)
+        log_file << ",InequalityConstraint" << i;
+    
     // End of header line
     log_file << "\n";
 
@@ -328,8 +334,8 @@ population nsga2::evolve(population pop) const
                 detail::polynomial_mutation_impl(children.second, bounds, dim_i, m_m, m_eta_m, m_e);
                 // we use prob to evaluate the fitness so
                 // that its feval counter is correctly updated
-                auto f1 = prob.fitness(children.first);
-                auto f2 = prob.fitness(children.second);
+                auto f1 = prob.fitness_non_const(children.first);
+                auto f2 = prob.fitness_non_const(children.second);
 
                 // Log the solutions
                 log_file << gen << ",";

@@ -334,8 +334,8 @@ population nsga2::evolve(population pop) const
                 detail::polynomial_mutation_impl(children.second, bounds, dim_i, m_m, m_eta_m, m_e);
                 // we use prob to evaluate the fitness so
                 // that its feval counter is correctly updated
-                auto f1 = prob.fitness_non_const(children.first);
-                auto f2 = prob.fitness_non_const(children.second);
+                auto f1 = prob.fitness(children.first);
+                auto f2 = prob.fitness(children.second);
 
                 // Log the solutions
                 log_file << gen << ",";

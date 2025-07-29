@@ -306,6 +306,8 @@ public:
         return m_seed;
     }
 
+    void clear();
+
 private:
     friend class boost::serialization::access;
     // Save to archive.
@@ -328,8 +330,6 @@ private:
         // LCOV_EXCL_STOP
     }
     BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-    void clear();
 
     // Problem.
     problem m_prob;
